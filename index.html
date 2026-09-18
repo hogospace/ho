@@ -1,0 +1,920 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>HO.Player Hub - 多媒体播放中心</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome Icons CDN -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- HLS.js for M3U8 Streaming Support -->
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+    <!-- OpenCC.js for Chinese Simplified / Traditional Translation -->
+    <script src="https://cdn.jsdelivr.net/npm/opencc-js@1.0.5/dist/umd/full.min.js"></script>
+    <style>
+        .glass {
+            background: rgba(15, 23, 42, 0.85);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+        }
+        .glass-card {
+            background: rgba(30, 41, 59, 0.7);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+        }
+        .no-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+        .no-scrollbar {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+        @keyframes spin-slow {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+        .animate-spin-slow {
+            animation: spin-slow 15s linear infinite;
+        }
+        .paused {
+            animation-play-state: paused;
+        }
+    </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen font-sans flex flex-col justify-between selection:bg-indigo-500 selection:text-white relative pb-32 md:pb-24">
+
+    <!-- Toast 消息提示框 -->
+    <div id="toast" class="fixed top-16 left-1/2 -translate-x-1/2 z-50 px-4 py-2 bg-indigo-600/90 text-white text-xs font-semibold rounded-full shadow-lg backdrop-blur-md opacity-0 pointer-events-none transition-all duration-300 transform -translate-y-2 flex items-center gap-2 max-w-[90vw] text-center">
+        <i id="toast-icon" class="fa-solid fa-circle-info"></i>
+        <span id="toast-text">提示信息</span>
+    </div>
+
+    <!-- 顶部导航栏 -->
+    <header class="glass sticky top-0 z-40 px-3 sm:px-6 py-3 flex flex-col sm:flex-row items-center justify-between gap-3">
+        <div class="flex items-center justify-between w-full sm:w-auto">
+            <div class="flex items-center space-x-2.5">
+                <div class="w-9 h-9 rounded-xl bg-gradient-to-tr from-indigo-500 via-purple-500 to-pink-500 flex items-center justify-center shadow-lg shadow-indigo-500/30 shrink-0">
+                    <i class="fa-solid fa-compact-disc text-lg text-white"></i>
+                </div>
+                <div>
+                    <div class="flex items-center gap-1.5 flex-wrap">
+                        <h1 class="font-bold text-base leading-none bg-clip-text text-transparent bg-gradient-to-r from-indigo-400 to-pink-400">HO.Player</h1>
+                        <div id="net-status-badge" class="px-2 py-0.5 rounded-full text-[9px] font-medium flex items-center gap-1 bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
+                            <span id="net-dot" class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                            <span id="net-status-text">在线</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 语言切换 -->
+            <div class="flex items-center bg-slate-900 border border-slate-800 rounded-lg px-2 py-1 text-xs text-slate-300">
+                <i class="fa-solid fa-language text-indigo-400 mr-1 text-xs"></i>
+                <select id="lang-selector" onchange="changeLanguage(this.value)" class="bg-transparent text-slate-200 text-xs focus:outline-none cursor-pointer py-0.5">
+                    <option value="zh-CN" class="bg-slate-900">简体</option>
+                    <option value="zh-TW" class="bg-slate-900">繁體</option>
+                    <option value="en" class="bg-slate-900">EN</option>
+                </select>
+            </div>
+        </div>
+
+        <!-- 移动端可横向滑动的标签页 -->
+        <div class="w-full sm:w-auto overflow-x-auto no-scrollbar">
+            <nav class="flex items-center space-x-1 bg-slate-900/90 p-1 rounded-xl border border-slate-800 text-xs min-w-max">
+                <button onclick="switchTab('local')" id="tab-local" class="px-3 py-1.5 rounded-lg transition-all flex items-center space-x-1.5 bg-indigo-600 text-white font-medium">
+                    <i class="fa-solid fa-folder-open"></i>
+                    <span>本地音乐</span>
+                </button>
+                <button onclick="switchTab('radio')" id="tab-radio" class="px-3 py-1.5 rounded-lg transition-all flex items-center space-x-1.5 text-slate-400 hover:text-slate-200">
+                    <i class="fa-solid fa-radio"></i>
+                    <span>网络电台</span>
+                </button>
+                <button onclick="switchTab('stream')" id="tab-stream" class="px-3 py-1.5 rounded-lg transition-all flex items-center space-x-1.5 text-slate-400 hover:text-slate-200">
+                    <i class="fa-solid fa-globe"></i>
+                    <span>网络播放</span>
+                </button>
+                <button onclick="switchTab('history')" id="tab-history" class="px-3 py-1.5 rounded-lg transition-all flex items-center space-x-1.5 text-slate-400 hover:text-slate-200">
+                    <i class="fa-solid fa-clock-rotate-left"></i>
+                    <span>播放历史</span>
+                </button>
+                <button onclick="switchTab('eq')" id="tab-eq" class="px-3 py-1.5 rounded-lg transition-all flex items-center space-x-1.5 text-slate-400 hover:text-slate-200">
+                    <i class="fa-solid fa-sliders"></i>
+                    <span>调音与频谱</span>
+                </button>
+            </nav>
+        </div>
+    </header>
+
+    <!-- 主体区域 -->
+    <main class="max-w-7xl w-full mx-auto px-3 sm:px-6 py-4 flex-1 grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
+
+        <!-- 左侧：黑胶唱片及音频参数状态区域 -->
+        <section class="lg:col-span-1 flex flex-col gap-4">
+            <div class="glass-card rounded-2xl p-4 sm:p-6 flex flex-col items-center justify-center relative overflow-hidden shadow-2xl">
+                <canvas id="canvas-visualizer" class="absolute inset-0 w-full h-full opacity-30 pointer-events-none"></canvas>
+
+                <div class="relative z-10 my-2 sm:my-4">
+                    <div id="vinyl-disc" class="w-36 h-36 sm:w-52 sm:h-52 rounded-full bg-slate-900 border-4 border-slate-800 shadow-2xl flex items-center justify-center animate-spin-slow paused relative">
+                        <div class="absolute inset-2 rounded-full border border-slate-800/60"></div>
+                        <div class="absolute inset-6 rounded-full border border-slate-800/40"></div>
+                        <div id="cover-art" class="w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-gradient-to-tr from-indigo-600 to-pink-600 flex items-center justify-center border-4 border-slate-950 shadow-inner">
+                            <i id="cover-icon" class="fa-solid fa-music text-2xl text-white/90"></i>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="relative z-10 text-center w-full mt-1">
+                    <h2 id="current-title" class="text-base sm:text-lg font-bold truncate text-slate-100 px-2">准备就绪</h2>
+                    <p id="current-artist" class="text-xs text-indigo-400 truncate mt-0.5">请选择曲目或电台开始播放</p>
+                    <span id="source-tag" class="inline-block mt-2 px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-slate-800 text-slate-400 border border-slate-700">
+                        等待操作
+                    </span>
+                </div>
+            </div>
+
+            <!-- 实时音质、声道与网络流量状态面板 -->
+            <div class="glass-card rounded-2xl p-4 text-xs space-y-2.5 border border-slate-800 font-mono">
+                <div class="flex items-center justify-between text-slate-300 font-bold border-b border-slate-800/80 pb-2">
+                    <span class="flex items-center"><i class="fa-solid fa-wave-square text-indigo-400 mr-2"></i>音频与网络仪表</span>
+                    <span id="stream-type-badge" class="px-1.5 py-0.5 text-[9px] bg-indigo-500/20 text-indigo-300 rounded border border-indigo-500/30">IDLE</span>
+                </div>
+                
+                <div class="grid grid-cols-2 gap-2 text-[11px]">
+                    <div class="bg-slate-900/60 p-2 rounded-xl border border-slate-800">
+                        <div class="text-slate-500 text-[10px]">音质采样率</div>
+                        <div id="info-quality" class="text-slate-200 font-semibold truncate mt-0.5">-- kHz</div>
+                    </div>
+                    <div class="bg-slate-900/60 p-2 rounded-xl border border-slate-800">
+                        <div class="text-slate-500 text-[10px]">声道输出</div>
+                        <div id="info-channels" class="text-indigo-300 font-semibold truncate mt-0.5">立体声 (Stereo)</div>
+                    </div>
+                    <div class="bg-slate-900/60 p-2 rounded-xl border border-slate-800">
+                        <div class="text-slate-500 text-[10px]">实时下载速率</div>
+                        <div id="info-speed" class="text-emerald-400 font-semibold truncate mt-0.5">0.0 KB/s</div>
+                    </div>
+                    <div class="bg-slate-900/60 p-2 rounded-xl border border-slate-800">
+                        <div class="text-slate-500 text-[10px]">已用流量总计</div>
+                        <div id="info-data" class="text-slate-300 font-semibold truncate mt-0.5">0.00 MB</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 手机锁屏/后台播放提示 -->
+            <div class="glass-card rounded-2xl p-4 text-xs text-slate-400 space-y-2 border border-slate-800">
+                <div class="flex items-center justify-between text-slate-300 font-semibold">
+                    <span><i class="fa-solid fa-mobile-screen-button text-indigo-400 mr-2"></i>手机锁屏后台播放</span>
+                    <span class="text-emerald-400 text-[11px]">已激活</span>
+                </div>
+                <p class="text-[10px] text-slate-500 leading-relaxed">提示：在 iOS Safari 或 Android Chrome 播放时，息屏后可在手机锁屏界面与下拉控制中心继续切歌与控制。</p>
+            </div>
+        </section>
+
+        <!-- 右侧：Tab 内容卡片区域 -->
+        <section class="lg:col-span-2 flex flex-col">
+            
+            <!-- Tab 1: 本地音乐 -->
+            <div id="content-local" class="glass-card rounded-2xl p-4 sm:p-6 flex-1 flex flex-col">
+                <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-4 pb-3 border-b border-slate-800">
+                    <h3 class="text-base font-bold text-slate-100 flex items-center gap-2">
+                        <i class="fa-solid fa-folder-open text-indigo-400"></i> 本地音乐中心
+                    </h3>
+
+                    <div class="flex items-center gap-2 w-full sm:w-auto">
+                        <label class="cursor-pointer flex-1 sm:flex-none px-3 py-2 bg-indigo-600 active:bg-indigo-700 text-white rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition-all">
+                            <i class="fa-solid fa-file-audio"></i> 选择文件
+                            <input type="file" id="local-file-input" multiple accept="audio/*,video/*" class="hidden" onchange="handleFileSelect(event)">
+                        </label>
+                        <label class="cursor-pointer flex-1 sm:flex-none px-3 py-2 bg-slate-800 active:bg-slate-900 text-slate-200 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition-all border border-slate-700">
+                            <i class="fa-solid fa-folder-tree"></i> 扫描文件夹
+                            <input type="file" id="local-folder-input" webkitdirectory directory multiple class="hidden" onchange="handleFileSelect(event)">
+                        </label>
+                    </div>
+                </div>
+
+                <div class="relative mb-3">
+                    <i class="fa-solid fa-magnifying-glass absolute left-3 top-3 text-slate-500 text-xs"></i>
+                    <input type="text" id="local-search-input" oninput="filterLocalPlaylist(this.value)" placeholder="搜索本地歌曲..." class="w-full bg-slate-900/80 border border-slate-800 rounded-xl pl-9 pr-4 py-2 text-xs text-slate-200 focus:outline-none focus:border-indigo-500">
+                </div>
+
+                <div class="flex-1 overflow-y-auto max-h-[300px] sm:max-h-[380px] rounded-xl border border-slate-800 bg-slate-900/40 p-2">
+                    <div id="local-empty-tip" class="py-10 text-center text-slate-500 text-xs">
+                        <i class="fa-solid fa-cloud-arrow-up text-3xl mb-2 text-slate-600 block"></i>
+                        暂无本地音频文件。点击“选择文件”导入。
+                    </div>
+                    <ul id="local-playlist" class="space-y-1"></ul>
+                </div>
+            </div>
+
+            <!-- Tab 2: 网络电台 -->
+            <div id="content-radio" class="glass-card rounded-2xl p-4 sm:p-6 flex-1 flex-col hidden">
+                <div class="flex items-center justify-between gap-2 mb-4 pb-3 border-b border-slate-800">
+                    <h3 class="text-base font-bold text-slate-100 flex items-center gap-2">
+                        <i class="fa-solid fa-radio text-indigo-400"></i> 全球电台库
+                    </h3>
+                    <div class="flex items-center gap-1.5">
+                        <button onclick="restoreDefaultRadios()" class="px-2.5 py-1.5 bg-slate-800 text-xs text-slate-300 rounded-lg border border-slate-700">
+                            <i class="fa-solid fa-rotate-left"></i> 重置电台
+                        </button>
+                        <button onclick="addCustomRadioPrompt()" class="px-2.5 py-1.5 bg-indigo-600/30 text-xs text-indigo-300 rounded-lg border border-indigo-500/40 font-medium">
+                            <i class="fa-solid fa-plus mr-1"></i> 添加电台
+                        </button>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5 overflow-y-auto max-h-[360px]" id="radio-grid"></div>
+            </div>
+
+            <!-- Tab 3: URL 流媒体 -->
+            <div id="content-stream" class="glass-card rounded-2xl p-4 sm:p-6 flex-1 flex-col hidden">
+                <div class="mb-4 pb-3 border-b border-slate-800">
+                    <h3 class="text-base font-bold text-slate-100 flex items-center gap-2">
+                        <i class="fa-solid fa-globe text-indigo-400"></i> 网络流媒体
+                    </h3>
+                </div>
+
+                <div class="space-y-3">
+                    <div>
+                        <div class="flex gap-2">
+                            <input type="url" id="stream-url-input" placeholder="输入音频流地址 (HTTP/HTTPS/M3U8)" class="flex-1 bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-indigo-500">
+                            <button onclick="playCustomStreamUrl()" class="px-4 py-2 bg-indigo-600 active:bg-indigo-700 text-white rounded-xl text-xs font-semibold flex items-center gap-1 shrink-0">
+                                <i class="fa-solid fa-play"></i> 播放
+                            </button>
+                        </div>
+                    </div>
+
+                    <div>
+                        <h4 class="text-xs font-semibold text-slate-400 mb-2">预设测试流</h4>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                            <button onclick="loadStreamPreset('https://upload.wikimedia.org/wikipedia/commons/b/bb/Test_tone_440Hz.ogg', '440Hz 标准音测试', 'Wikimedia')" class="p-2.5 bg-slate-900/80 hover:bg-slate-800 rounded-xl text-left border border-slate-800 truncate">
+                                <div class="font-medium text-indigo-300">440Hz Test Tone (OGG)</div>
+                            </button>
+                            <button onclick="loadStreamPreset('https://stream.zeno.fm/f3wvbbqmdg8uv', 'Chillhop Lofi Live Feed', 'Zeno.FM')" class="p-2.5 bg-slate-900/80 hover:bg-slate-800 rounded-xl text-left border border-slate-800 truncate">
+                                <div class="font-medium text-indigo-300">Lofi Beats Live Feed</div>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Tab 4: 播放历史 -->
+            <div id="content-history" class="glass-card rounded-2xl p-4 sm:p-6 flex-1 flex-col hidden">
+                <div class="flex items-center justify-between mb-4 pb-3 border-b border-slate-800">
+                    <h3 class="text-base font-bold text-slate-100 flex items-center gap-2">
+                        <i class="fa-solid fa-clock-rotate-left text-indigo-400"></i> 播放历史
+                    </h3>
+                    <button onclick="clearHistory()" class="px-2.5 py-1.5 bg-rose-600/20 text-xs text-rose-300 rounded-lg border border-rose-500/30">
+                        <i class="fa-solid fa-trash-can mr-1"></i> 清空历史
+                    </button>
+                </div>
+
+                <div class="flex-1 overflow-y-auto max-h-[320px] rounded-xl border border-slate-800 bg-slate-900/40 p-2">
+                    <div id="history-empty-tip" class="py-10 text-center text-slate-500 text-xs">暂无播放历史记录。</div>
+                    <ul id="history-list" class="space-y-1"></ul>
+                </div>
+            </div>
+
+            <!-- Tab 5: Web Audio 调音台 -->
+            <div id="content-eq" class="glass-card rounded-2xl p-4 sm:p-6 flex-1 flex-col hidden">
+                <div class="flex justify-between items-center mb-4 pb-3 border-b border-slate-800">
+                    <h3 class="text-base font-bold text-slate-100 flex items-center gap-2">
+                        <i class="fa-solid fa-sliders text-indigo-400"></i> 调音台
+                    </h3>
+                    <button onclick="resetEQ()" class="px-2.5 py-1 bg-slate-800 text-xs text-slate-300 rounded-lg border border-slate-700">重置</button>
+                </div>
+
+                <div class="grid grid-cols-5 gap-2 text-center my-2">
+                    <div>
+                        <input type="range" id="eq-60" min="-12" max="12" value="0" step="1" oninput="updateEQ(0, this.value)" class="h-28 accent-indigo-500 [writing-mode:vertical-lr] [direction:rtl] mx-auto cursor-pointer">
+                        <div class="text-[10px] text-slate-400 mt-1 font-mono">60Hz</div>
+                    </div>
+                    <div>
+                        <input type="range" id="eq-250" min="-12" max="12" value="0" step="1" oninput="updateEQ(1, this.value)" class="h-28 accent-indigo-500 [writing-mode:vertical-lr] [direction:rtl] mx-auto cursor-pointer">
+                        <div class="text-[10px] text-slate-400 mt-1 font-mono">250Hz</div>
+                    </div>
+                    <div>
+                        <input type="range" id="eq-1000" min="-12" max="12" value="0" step="1" oninput="updateEQ(2, this.value)" class="h-28 accent-indigo-500 [writing-mode:vertical-lr] [direction:rtl] mx-auto cursor-pointer">
+                        <div class="text-[10px] text-slate-400 mt-1 font-mono">1kHz</div>
+                    </div>
+                    <div>
+                        <input type="range" id="eq-4000" min="-12" max="12" value="0" step="1" oninput="updateEQ(3, this.value)" class="h-28 accent-indigo-500 [writing-mode:vertical-lr] [direction:rtl] mx-auto cursor-pointer">
+                        <div class="text-[10px] text-slate-400 mt-1 font-mono">4kHz</div>
+                    </div>
+                    <div>
+                        <input type="range" id="eq-12000" min="-12" max="12" value="0" step="1" oninput="updateEQ(4, this.value)" class="h-28 accent-indigo-500 [writing-mode:vertical-lr] [direction:rtl] mx-auto cursor-pointer">
+                        <div class="text-[10px] text-slate-400 mt-1 font-mono">12kHz</div>
+                    </div>
+                </div>
+            </div>
+
+        </section>
+    </main>
+
+    <!-- 底部固定播放控制栏面板 -->
+    <footer class="glass border-t border-slate-800 px-3 sm:px-6 py-2.5 fixed bottom-0 left-0 right-0 z-50">
+        <div class="max-w-7xl mx-auto flex flex-col gap-1.5">
+            
+            <!-- 进度条与时间 -->
+            <div class="w-full flex items-center gap-2">
+                <span id="time-current" class="text-[10px] font-mono text-slate-400 w-8 text-right">00:00</span>
+                <div class="relative flex-1 group cursor-pointer flex items-center">
+                    <input type="range" id="seek-bar" value="0" min="0" max="100" oninput="seekAudio(this.value)" class="w-full h-1 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-indigo-500">
+                </div>
+                <span id="time-total" class="text-[10px] font-mono text-slate-400 w-8">00:00</span>
+            </div>
+
+            <!-- 控制按钮区 -->
+            <div class="flex items-center justify-between gap-2">
+                <div class="flex items-center gap-3">
+                    <button id="btn-shuffle" onclick="toggleShuffle()" class="text-slate-500 hover:text-slate-300 text-xs">
+                        <i class="fa-solid fa-shuffle"></i>
+                    </button>
+                    <button id="btn-loop" onclick="cycleLoopMode()" class="text-indigo-400 text-xs">
+                        <i id="loop-icon" class="fa-solid fa-repeat"></i>
+                    </button>
+                </div>
+
+                <div class="flex items-center gap-4">
+                    <button id="btn-prev" onclick="playPrevTrack()" class="text-slate-300 hover:text-white text-sm active:scale-95">
+                        <i class="fa-solid fa-backward-step"></i>
+                    </button>
+                    <button id="btn-play" onclick="togglePlayPause()" class="w-10 h-10 rounded-full bg-gradient-to-tr from-indigo-500 to-pink-500 text-white flex items-center justify-center text-base shadow-lg shadow-indigo-500/30 active:scale-95">
+                        <i id="play-icon" class="fa-solid fa-play ml-0.5"></i>
+                    </button>
+                    <button id="btn-next" onclick="playNextTrack()" class="text-slate-300 hover:text-white text-sm active:scale-95">
+                        <i class="fa-solid fa-forward-step"></i>
+                    </button>
+                </div>
+
+                <div class="flex items-center gap-1.5">
+                    <button id="btn-mute" onclick="toggleMute()" class="text-slate-400 text-xs">
+                        <i id="mute-icon" class="fa-solid fa-volume-high"></i>
+                    </button>
+                    <input type="range" id="volume-bar" min="0" max="100" value="80" oninput="setVolume(this.value)" class="w-16 h-1 bg-slate-800 rounded-lg appearance-none accent-indigo-500">
+                </div>
+            </div>
+
+        </div>
+    </footer>
+
+    <!-- 原生 Audio 播放器 -->
+    <audio id="audio-player" class="hidden" playsinline webkit-playsinline x5-playsinline crossorigin="anonymous"></audio>
+
+    <script>
+        // 全球电台默认列表
+        const defaultRadioList = [
+            { id: 'r1', name: 'SomaFM Groove Salad', desc: 'Chillout / Ambient 电子缓拍', url: 'https://ice1.somafm.com/groovesalad-128-mp3', icon: 'fa-brain' },
+            { id: 'r2', name: 'SomaFM Secret Agent', desc: 'Lounge / 爵士特工复古音乐', url: 'https://ice1.somafm.com/secretagent-128-mp3', icon: 'fa-user-secret' },
+            { id: 'r3', name: 'Chillhop Lofi Stream', desc: 'Lofi HipHop 学习工作音乐', url: 'https://stream.zeno.fm/f3wvbbqmdg8uv', icon: 'fa-mug-hot' },
+            { id: 'r4', name: 'KEXP Seattle Live', desc: '摇滚 / 独立音乐人直达电台', url: 'https://kexp-mp3-128.streamguys1.com/kexp128.mp3', icon: 'fa-guitar' },
+            { id: 'r5', name: 'Classic FM UK', desc: '经典古典乐放松电台', url: 'https://media-ice.musicradio.com/ClassicFMMP3', icon: 'fa-music' },
+            { id: 'r6', name: 'Asia Dream - Japan Hits', desc: 'J-Pop / 动漫流行乐', url: 'https://asiadreamradio.torontocast.stream/japanhits', icon: 'fa-compact-disc' },
+            { id: 'r7', name: 'BBC World Service', desc: 'BBC 国际新闻广播直播', url: 'https://stream.live.vc.bbcmedia.co.uk/bbc_world_service', icon: 'fa-newspaper' },
+            { id: 'r8', name: 'SomaFM Def Con Radio', desc: '黑客与极客电子音乐', url: 'https://ice1.somafm.com/defcon-128-mp3', icon: 'fa-terminal' }
+        ];
+
+        const state = {
+            currentSource: null,
+            localFiles: [],
+            radioList: JSON.parse(localStorage.getItem('hoplayer_radios') || JSON.stringify(defaultRadioList)),
+            historyList: JSON.parse(localStorage.getItem('hoplayer_history') || '[]'),
+            currentIndex: -1,
+            isPlaying: false,
+            audioCtx: null,
+            audioSourceNode: null,
+            hls: null,
+            isMuted: false,
+            lastVolume: 0.8,
+            totalBytesDownloaded: 0,
+            lastBytesDownloaded: 0,
+            networkInterval: null,
+            currentLang: 'zh-CN'
+        };
+
+        const audio = document.getElementById('audio-player');
+        const playIcon = document.getElementById('play-icon');
+        const vinylDisc = document.getElementById('vinyl-disc');
+        const currentTitle = document.getElementById('current-title');
+        const currentArtist = document.getElementById('current-artist');
+        const sourceTag = document.getElementById('source-tag');
+
+        // 初始化 OpenCC 转换器
+        let converterToTW = null;
+        let converterToCN = null;
+
+        function initOpenCC() {
+            if (window.OpenCC) {
+                converterToTW = OpenCC.Converter({ from: 'cn', to: 'tw' });
+                converterToCN = OpenCC.Converter({ from: 'tw', to: 'cn' });
+            }
+        }
+
+        // 语言文字切换核心处理函数
+        function changeLanguage(lang) {
+            state.currentLang = lang;
+            document.documentElement.lang = lang;
+
+            if (!converterToTW && window.OpenCC) {
+                initOpenCC();
+            }
+
+            // 对 DOM 中的文本节点进行遍历转换
+            const walkDOM = (node) => {
+                if (node.nodeType === Node.TEXT_NODE) {
+                    const text = node.nodeValue;
+                    if (text && text.trim()) {
+                        if (lang === 'zh-TW' && converterToTW) {
+                            node.nodeValue = converterToTW(text);
+                        } else if (lang === 'zh-CN' && converterToCN) {
+                            node.nodeValue = converterToCN(text);
+                        }
+                    }
+                } else if (node.nodeType === Node.ELEMENT_NODE) {
+                    // 避开 select 节点本身及其 script/style 节点
+                    if (['SCRIPT', 'STYLE', 'SELECT', 'OPTION'].includes(node.tagName)) return;
+
+                    // 转换 placeholder 属性
+                    if (node.placeholder) {
+                        if (lang === 'zh-TW' && converterToTW) {
+                            node.placeholder = converterToTW(node.placeholder);
+                        } else if (lang === 'zh-CN' && converterToCN) {
+                            node.placeholder = converterToCN(node.placeholder);
+                        }
+                    }
+
+                    node.childNodes.forEach(walkDOM);
+                }
+            };
+
+            walkDOM(document.body);
+            showToast(lang === 'zh-TW' ? "已切換為繁體中文" : lang === 'zh-CN' ? "已切换为简体中文" : "Language Switched");
+        }
+
+        function initAudioContext() {
+            if (!state.audioCtx) {
+                const AudioCtx = window.AudioContext || window.webkitAudioContext;
+                if (AudioCtx) {
+                    state.audioCtx = new AudioCtx();
+                }
+            }
+            if (state.audioCtx && state.audioCtx.state === 'suspended') {
+                state.audioCtx.resume();
+            }
+            updateAudioQualityStats();
+        }
+
+        function unlockMobileAudio() {
+            initAudioContext();
+        }
+
+        function updateAudioQualityStats() {
+            const qualityEl = document.getElementById('info-quality');
+            const channelsEl = document.getElementById('info-channels');
+            const badgeEl = document.getElementById('stream-type-badge');
+
+            if (state.audioCtx) {
+                const sampleRate = (state.audioCtx.sampleRate / 1000).toFixed(1);
+                qualityEl.textContent = `${sampleRate} kHz`;
+            } else {
+                qualityEl.textContent = '44.1 kHz';
+            }
+
+            if (audio.src && audio.src.startsWith('blob:')) {
+                badgeEl.textContent = 'LOCAL/FLAC';
+                channelsEl.textContent = state.currentLang === 'zh-TW' ? '2.0 立體聲' : '2.0 立体声';
+            } else if (audio.src.includes('.m3u8')) {
+                badgeEl.textContent = 'HLS/AAC';
+                channelsEl.textContent = '立体声 Stream';
+            } else if (audio.src) {
+                badgeEl.textContent = 'HQ/MP3';
+                channelsEl.textContent = state.currentLang === 'zh-TW' ? '雙聲道 (Stereo)' : '双声道 (Stereo)';
+            } else {
+                badgeEl.textContent = 'IDLE';
+                channelsEl.textContent = '--';
+            }
+        }
+
+        function startNetworkMonitor() {
+            if (state.networkInterval) clearInterval(state.networkInterval);
+
+            state.networkInterval = setInterval(() => {
+                if (!state.isPlaying) {
+                    document.getElementById('info-speed').textContent = '0.0 KB/s';
+                    return;
+                }
+
+                if (audio.buffered && audio.buffered.length > 0) {
+                    const bufferedTime = audio.buffered.end(audio.buffered.length - 1);
+                    const estimatedBytes = Math.floor(bufferedTime * 16 * 1024);
+                    
+                    if (estimatedBytes > state.totalBytesDownloaded) {
+                        state.totalBytesDownloaded = estimatedBytes;
+                    } else {
+                        state.totalBytesDownloaded += Math.floor(16 * 1024);
+                    }
+                } else if (state.isPlaying) {
+                    state.totalBytesDownloaded += Math.floor(16 * 1024);
+                }
+
+                const diffBytes = state.totalBytesDownloaded - state.lastBytesDownloaded;
+                state.lastBytesDownloaded = state.totalBytesDownloaded;
+
+                const speedKB = (diffBytes / 1024).toFixed(1);
+                const totalMB = (state.totalBytesDownloaded / (1024 * 1024)).toFixed(2);
+
+                document.getElementById('info-speed').textContent = `${speedKB} KB/s`;
+                document.getElementById('info-data').textContent = `${totalMB} MB`;
+            }, 1000);
+        }
+
+        function playMediaSource(url, title, artist, sourceName) {
+            unlockMobileAudio();
+            showToast("正在加载音频流...");
+
+            currentTitle.textContent = title;
+            currentArtist.textContent = artist || '网络/本地源';
+            sourceTag.textContent = sourceName;
+            state.currentSource = sourceName;
+
+            if (state.hls) {
+                state.hls.destroy();
+                state.hls = null;
+            }
+
+            audio.pause();
+
+            if (url.includes('.m3u8') && Hls.isSupported()) {
+                state.hls = new Hls();
+                state.hls.loadSource(url);
+                state.hls.attachMedia(audio);
+                state.hls.on(Hls.Events.MANIFEST_PARSED, function() {
+                    startAudioPlayback();
+                });
+            } else {
+                audio.src = url;
+                audio.load();
+                startAudioPlayback();
+            }
+
+            updateAudioQualityStats();
+            startNetworkMonitor();
+            recordPlaybackHistory({ name: title, artist: artist, source: sourceName, url: url });
+        }
+
+        function startAudioPlayback() {
+            const playPromise = audio.play();
+            if (playPromise !== undefined) {
+                playPromise.then(() => {
+                    state.isPlaying = true;
+                    updatePlayStateUI();
+                    setupMediaSession(currentTitle.textContent, currentArtist.textContent);
+                }).catch(err => {
+                    console.error("Playback error:", err);
+                    showToast("播放受阻，请手动点击播放按钮！", true);
+                    state.isPlaying = false;
+                    updatePlayStateUI();
+                });
+            }
+        }
+
+        function togglePlayPause() {
+            unlockMobileAudio();
+            if (!audio.src) return;
+
+            if (audio.paused) {
+                audio.play().then(() => {
+                    state.isPlaying = true;
+                    updatePlayStateUI();
+                }).catch(err => console.error(err));
+            } else {
+                audio.pause();
+                state.isPlaying = false;
+                updatePlayStateUI();
+            }
+        }
+
+        function updatePlayStateUI() {
+            if (state.isPlaying) {
+                playIcon.className = 'fa-solid fa-pause';
+                vinylDisc.classList.remove('paused');
+            } else {
+                playIcon.className = 'fa-solid fa-play ml-0.5';
+                vinylDisc.classList.add('paused');
+            }
+        }
+
+        function handleFileSelect(e) {
+            const files = Array.from(e.target.files).filter(file => file.type.startsWith('audio/') || file.type.startsWith('video/'));
+            if (!files.length) return;
+
+            state.localFiles = files.map((file, idx) => ({
+                id: 'local_' + idx,
+                name: file.name.replace(/\.[^/.]+$/, ""),
+                file: file,
+                url: URL.createObjectURL(file)
+            }));
+
+            renderLocalPlaylist(state.localFiles);
+            showToast(`已成功导入 ${files.length} 首本地文件`);
+        }
+
+        function renderLocalPlaylist(list) {
+            const container = document.getElementById('local-playlist');
+            const emptyTip = document.getElementById('local-empty-tip');
+            container.innerHTML = '';
+
+            if (!list.length) {
+                emptyTip.classList.remove('hidden');
+                return;
+            }
+            emptyTip.classList.add('hidden');
+
+            list.forEach((item, index) => {
+                const li = document.createElement('li');
+                li.className = 'p-2.5 rounded-xl hover:bg-slate-800/80 flex items-center justify-between cursor-pointer border border-transparent hover:border-slate-700/60 transition-all text-xs';
+                li.innerHTML = `
+                    <div class="flex items-center gap-2.5 overflow-hidden">
+                        <i class="fa-solid fa-music text-indigo-400 shrink-0"></i>
+                        <span class="truncate text-slate-200 font-medium">${item.name}</span>
+                    </div>
+                    <button onclick="playLocalFile(${index})" class="px-2 py-1 bg-indigo-600/20 text-indigo-300 hover:bg-indigo-600 hover:text-white rounded-lg shrink-0 transition-all">
+                        <i class="fa-solid fa-play"></i>
+                    </button>
+                `;
+                container.appendChild(li);
+            });
+        }
+
+        function playLocalFile(index) {
+            if (index < 0 || index >= state.localFiles.length) return;
+            state.currentIndex = index;
+            const track = state.localFiles[index];
+            playMediaSource(track.url, track.name, "无损/本地文件", "本地音频");
+        }
+
+        function filterLocalPlaylist(keyword) {
+            const filtered = state.localFiles.filter(f => f.name.toLowerCase().includes(keyword.toLowerCase()));
+            renderLocalPlaylist(filtered);
+        }
+
+        function renderRadioGrid() {
+            const grid = document.getElementById('radio-grid');
+            grid.innerHTML = '';
+            state.radioList.forEach((radio, index) => {
+                const card = document.createElement('div');
+                card.className = 'p-3 bg-slate-900/80 hover:bg-slate-800 border border-slate-800 rounded-xl flex items-center justify-between gap-2';
+                card.innerHTML = `
+                    <div class="overflow-hidden flex-1">
+                        <div class="font-bold text-xs text-slate-200 truncate flex items-center gap-1.5">
+                            <i class="fa-solid ${radio.icon || 'fa-radio'} text-indigo-400 text-[11px]"></i>
+                            <span>${radio.name}</span>
+                        </div>
+                        <div class="text-[10px] text-slate-400 truncate mt-0.5">${radio.desc || '网络电台'}</div>
+                    </div>
+                    <div class="flex items-center gap-1 shrink-0">
+                        <button onclick='playRadio(${JSON.stringify(radio)})' class="px-2.5 py-1.5 bg-indigo-600 active:bg-indigo-700 text-white text-xs rounded-lg flex items-center gap-1">
+                            <i class="fa-solid fa-play"></i> 播放
+                        </button>
+                        <button onclick='editRadio(${index})' class="p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs rounded-lg border border-slate-700" title="编辑电台">
+                            <i class="fa-solid fa-pen-to-square"></i>
+                        </button>
+                        <button onclick='deleteRadio(${index})' class="p-1.5 bg-rose-600/20 hover:bg-rose-600 text-rose-300 hover:text-white text-xs rounded-lg border border-rose-500/30" title="删除电台">
+                            <i class="fa-solid fa-trash-can"></i>
+                        </button>
+                    </div>
+                `;
+                grid.appendChild(card);
+            });
+        }
+
+        function playRadio(radio) {
+            playMediaSource(radio.url, radio.name, radio.desc, "网络电台");
+        }
+
+        function editRadio(index) {
+            const radio = state.radioList[index];
+            if (!radio) return;
+
+            const newName = prompt("编辑电台名称：", radio.name);
+            if (newName === null) return;
+
+            const newDesc = prompt("编辑电台描述：", radio.desc || '');
+            if (newDesc === null) return;
+
+            const newUrl = prompt("编辑电台流 URL：", radio.url);
+            if (newUrl === null) return;
+
+            if (newName.trim() && newUrl.trim()) {
+                state.radioList[index] = {
+                    ...radio,
+                    name: newName.trim(),
+                    desc: newDesc.trim(),
+                    url: newUrl.trim()
+                };
+                localStorage.setItem('hoplayer_radios', JSON.stringify(state.radioList));
+                renderRadioGrid();
+                showToast("电台信息已修改！");
+            } else {
+                showToast("电台名称和 URL 不能为空！", true);
+            }
+        }
+
+        function deleteRadio(index) {
+            const radio = state.radioList[index];
+            if (!radio) return;
+            if (confirm(`确定要删除电台 "${radio.name}" 吗？`)) {
+                state.radioList.splice(index, 1);
+                localStorage.setItem('hoplayer_radios', JSON.stringify(state.radioList));
+                renderRadioGrid();
+                showToast("电台已删除！");
+            }
+        }
+
+        function addCustomRadioPrompt() {
+            const name = prompt("请输入新电台名称：");
+            if (name === null) return;
+            const desc = prompt("请输入电台描述（可选）：") || '自定义网络电台';
+            const url = prompt("请输入电台流 URL (HTTP/HTTPS/M3U8)：");
+            if (name && url) {
+                state.radioList.push({ id: 'custom_' + Date.now(), name: name.trim(), desc: desc.trim(), url: url.trim(), icon: 'fa-radio' });
+                localStorage.setItem('hoplayer_radios', JSON.stringify(state.radioList));
+                renderRadioGrid();
+                showToast("电台添加成功！");
+            }
+        }
+
+        function restoreDefaultRadios() {
+            state.radioList = [...defaultRadioList];
+            localStorage.setItem('hoplayer_radios', JSON.stringify(state.radioList));
+            renderRadioGrid();
+            showToast("已恢复默认电台库！");
+        }
+
+        function playCustomStreamUrl() {
+            const url = document.getElementById('stream-url-input').value.trim();
+            if (!url) {
+                showToast("请输入有效的 URL 地址", true);
+                return;
+            }
+            playMediaSource(url, "自定义流媒体", url, "URL 流");
+        }
+
+        function loadStreamPreset(url, title, artist) {
+            playMediaSource(url, title, artist, "网络流");
+        }
+
+        function recordPlaybackHistory(item) {
+            state.historyList = state.historyList.filter(h => h.name !== item.name);
+            state.historyList.unshift(item);
+            if (state.historyList.length > 20) state.historyList.pop();
+            localStorage.setItem('hoplayer_history', JSON.stringify(state.historyList));
+            renderHistoryList();
+        }
+
+        function renderHistoryList() {
+            const container = document.getElementById('history-list');
+            const emptyTip = document.getElementById('history-empty-tip');
+            container.innerHTML = '';
+
+            if (!state.historyList.length) {
+                emptyTip.classList.remove('hidden');
+                return;
+            }
+            emptyTip.classList.add('hidden');
+
+            state.historyList.forEach(item => {
+                const li = document.createElement('li');
+                li.className = 'p-2.5 bg-slate-900/60 rounded-xl flex items-center justify-between text-xs border border-slate-800/80';
+                li.innerHTML = `
+                    <div class="overflow-hidden">
+                        <div class="font-medium text-slate-200 truncate">${item.name}</div>
+                        <div class="text-[10px] text-slate-500">${item.source} • ${item.artist || '未知'}</div>
+                    </div>
+                    <button onclick="playMediaSource('${item.url}', '${item.name}', '${item.artist}', '${item.source}')" class="px-2 py-1 bg-slate-800 hover:bg-indigo-600 text-slate-300 hover:text-white rounded-lg transition-all">
+                        <i class="fa-solid fa-play"></i>
+                    </button>
+                `;
+                container.appendChild(li);
+            });
+        }
+
+        function clearHistory() {
+            state.historyList = [];
+            localStorage.removeItem('hoplayer_history');
+            renderHistoryList();
+            showToast("历史记录已清空！");
+        }
+
+        function setupMediaSession(title, artist) {
+            if ('mediaSession' in navigator) {
+                navigator.mediaSession.metadata = new MediaMetadata({
+                    title: title,
+                    artist: artist,
+                    album: 'HO.Player Hub'
+                });
+                navigator.mediaSession.setActionHandler('play', () => togglePlayPause());
+                navigator.mediaSession.setActionHandler('pause', () => togglePlayPause());
+                navigator.mediaSession.setActionHandler('previoustrack', () => playPrevTrack());
+                navigator.mediaSession.setActionHandler('nexttrack', () => playNextTrack());
+            }
+        }
+
+        audio.addEventListener('timeupdate', () => {
+            if (isNaN(audio.duration)) return;
+            const current = audio.currentTime;
+            const total = audio.duration;
+            document.getElementById('time-current').textContent = formatTime(current);
+            document.getElementById('time-total').textContent = formatTime(total);
+            document.getElementById('seek-bar').value = (current / total) * 100;
+        });
+
+        audio.addEventListener('ended', () => {
+            playNextTrack();
+        });
+
+        function seekAudio(val) {
+            if (audio.duration) {
+                audio.currentTime = (val / 100) * audio.duration;
+            }
+        }
+
+        function setVolume(val) {
+            audio.volume = val / 100;
+            state.lastVolume = audio.volume;
+            state.isMuted = val == 0;
+            updateMuteIcon();
+        }
+
+        function toggleMute() {
+            if (state.isMuted) {
+                audio.volume = state.lastVolume || 0.8;
+                document.getElementById('volume-bar').value = audio.volume * 100;
+                state.isMuted = false;
+            } else {
+                audio.volume = 0;
+                document.getElementById('volume-bar').value = 0;
+                state.isMuted = true;
+            }
+            updateMuteIcon();
+        }
+
+        function updateMuteIcon() {
+            const icon = document.getElementById('mute-icon');
+            if (state.isMuted || audio.volume === 0) {
+                icon.className = 'fa-solid fa-volume-xmark text-rose-400';
+            } else {
+                icon.className = 'fa-solid fa-volume-high text-slate-400';
+            }
+        }
+
+        function playNextTrack() {
+            if (state.localFiles.length && state.currentIndex < state.localFiles.length - 1) {
+                playLocalFile(state.currentIndex + 1);
+            }
+        }
+
+        function playPrevTrack() {
+            if (state.localFiles.length && state.currentIndex > 0) {
+                playLocalFile(state.currentIndex - 1);
+            }
+        }
+
+        function formatTime(secs) {
+            const m = Math.floor(secs / 60);
+            const s = Math.floor(secs % 60);
+            return `${m < 10 ? '0' : ''}${m}:${s < 10 ? '0' : ''}${s}`;
+        }
+
+        function showToast(msg, isError = false) {
+            const toast = document.getElementById('toast');
+            document.getElementById('toast-text').textContent = msg;
+            toast.className = `fixed top-16 left-1/2 -translate-x-1/2 z-50 px-4 py-2 ${isError ? 'bg-rose-600/90' : 'bg-indigo-600/90'} text-white text-xs font-semibold rounded-full shadow-lg backdrop-blur-md opacity-100 translate-y-0 flex items-center gap-2 transition-all duration-300`;
+            setTimeout(() => {
+                toast.classList.add('opacity-0', '-translate-y-2', 'pointer-events-none');
+            }, 3000);
+        }
+
+        function switchTab(tab) {
+            ['local', 'radio', 'stream', 'history', 'eq'].forEach(t => {
+                document.getElementById(`content-${t}`)?.classList.add('hidden');
+                document.getElementById(`tab-${t}`)?.classList.remove('bg-indigo-600', 'text-white');
+                document.getElementById(`tab-${t}`)?.classList.add('text-slate-400');
+            });
+            document.getElementById(`content-${tab}`)?.classList.remove('hidden');
+            document.getElementById(`tab-${tab}`)?.classList.add('bg-indigo-600', 'text-white');
+            document.getElementById(`tab-${tab}`)?.classList.remove('text-slate-400');
+        }
+
+        window.addEventListener('click', unlockMobileAudio, { once: true });
+        window.addEventListener('touchstart', unlockMobileAudio, { once: true });
+
+        window.onload = () => {
+            initOpenCC();
+            renderRadioGrid();
+            renderHistoryList();
+        };
+    </script>
+</body>
+</html>
