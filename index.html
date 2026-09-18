@@ -1,0 +1,1475 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HoPlayer online Hub</title>
+    <!-- 引入 HLS 支援 -->
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+    <style>
+        :root {
+            --primary-color: #6c5ce7;
+            --primary-hover: #7d6dfa;
+            --secondary-color: #a29bfe;
+            --bg-color: #090d16;
+            --card-bg: rgba(22, 30, 46, 0.75);
+            --card-border: rgba(255, 255, 255, 0.08);
+            --text-color: #f1f5f9;
+            --text-muted: #94a3b8;
+            --accent-color: #00b894;
+            --accent-glow: rgba(0, 184, 148, 0.4);
+            --danger-color: #ff7675;
+            --neon-blue: #00d2ff;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            background-image: 
+                radial-gradient(at 0% 0%, rgba(108, 92, 231, 0.15) 0px, transparent 50%),
+                radial-gradient(at 100% 100%, rgba(0, 210, 255, 0.1) 0px, transparent 50%);
+            background-attachment: fixed;
+            color: var(--text-color);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* 自訂美化滾動條 */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: rgba(15, 23, 42, 0.6);
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.15);
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: var(--primary-color);
+        }
+
+        header {
+            background: rgba(15, 23, 42, 0.75);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            padding: 0.9rem 2rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid var(--card-border);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+        }
+
+        .logo {
+            font-size: 1.5rem;
+            font-weight: 800;
+            letter-spacing: 0.5px;
+            background: linear-gradient(135deg, #a29bfe, #00d2ff);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            text-shadow: 0 0 20px rgba(162, 155, 254, 0.3);
+        }
+
+        .header-right {
+            display: flex;
+            align-items: center;
+            gap: 18px;
+        }
+
+        .status-bar {
+            font-size: 0.85rem;
+            color: var(--text-muted);
+            display: flex;
+            gap: 15px;
+            align-items: center;
+            background: rgba(255, 255, 255, 0.03);
+            padding: 5px 12px;
+            border-radius: 20px;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .status-badge {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background-color: var(--accent-color);
+            margin-right: 6px;
+            box-shadow: 0 0 8px var(--accent-glow);
+        }
+
+        .lang-select {
+            background: #0f172a;
+            color: #fff;
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            padding: 6px 12px;
+            border-radius: 8px;
+            font-size: 0.82rem;
+            outline: none;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .lang-select:hover {
+            border-color: var(--primary-color);
+        }
+
+        .main-container {
+            display: grid;
+            grid-template-columns: 1fr 380px;
+            gap: 24px;
+            padding: 24px;
+            max-width: 1440px;
+            margin: 0 auto;
+            width: 100%;
+            flex: 1;
+        }
+
+        @media (max-width: 960px) {
+            .main-container {
+                grid-template-columns: 1fr;
+            }
+            header {
+                flex-direction: column;
+                gap: 12px;
+                align-items: flex-start;
+            }
+            .header-right {
+                width: 100%;
+                justify-content: space-between;
+            }
+        }
+
+        .player-section {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .media-container {
+            position: relative;
+            background-color: #030712;
+            border-radius: 16px;
+            overflow: hidden;
+            aspect-ratio: 16/9;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.08);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        video {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+        }
+
+        /* 隨音畫面外層容器：居中且四邊留有空位 */
+        #visualizerOverlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            display: none;
+            background: radial-gradient(circle at center, #0a1122 0%, #030712 100%);
+            z-index: 2;
+        }
+
+        /* Canvas 縮小一半並居中 */
+        #audioVisualizer {
+            position: absolute;
+            top: 25%;
+            left: 25%;
+            width: 50%;
+            height: 50%;
+            border-radius: 12px;
+            box-shadow: inset 0 0 15px rgba(0, 0, 0, 0.5);
+        }
+
+        /* 屏下顯示正在播放的音訊名稱 */
+        .now-playing-title {
+            position: absolute;
+            bottom: 8%;
+            width: 80%;
+            left: 10%;
+            text-align: center;
+            color: #80e5ff;
+            font-size: 1rem;
+            font-weight: 600;
+            letter-spacing: 1px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            text-shadow: 0 0 12px rgba(0, 210, 255, 0.6);
+        }
+
+        /* 播放控制列 (新增美化) */
+        .controls-bar {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 16px;
+            background: var(--card-bg);
+            backdrop-filter: blur(12px);
+            padding: 12px;
+            border-radius: 14px;
+            border: 1px solid var(--card-border);
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+        }
+
+        .ctrl-btn {
+            background: rgba(255, 255, 255, 0.05);
+            color: var(--text-color);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            padding: 10px 18px;
+            border-radius: 10px;
+            font-size: 1.1rem;
+            cursor: pointer;
+            transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .ctrl-btn:hover {
+            background: var(--primary-color);
+            border-color: var(--primary-color);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(108, 92, 231, 0.4);
+        }
+
+        .ctrl-btn:active {
+            transform: translateY(0);
+        }
+
+        .ctrl-btn.active {
+            background: var(--primary-color);
+            border-color: var(--accent-color);
+            color: #fff;
+            box-shadow: 0 0 15px rgba(108, 92, 231, 0.6);
+        }
+
+        .fullscreen-btn {
+            position: absolute;
+            top: 14px;
+            right: 14px;
+            background: rgba(15, 23, 42, 0.65);
+            color: #fff;
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            padding: 7px 14px;
+            border-radius: 8px;
+            cursor: pointer;
+            backdrop-filter: blur(8px);
+            z-index: 10;
+            font-size: 0.82rem;
+            transition: all 0.2s ease;
+        }
+
+        .fullscreen-btn:hover {
+            background: var(--primary-color);
+            border-color: var(--primary-color);
+            box-shadow: 0 0 12px rgba(108, 92, 231, 0.5);
+        }
+
+        .panel {
+            background-color: var(--card-bg);
+            backdrop-filter: blur(12px);
+            border-radius: 16px;
+            padding: 22px;
+            border: 1px solid var(--card-border);
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+        }
+
+        .panel-title {
+            font-size: 1.05rem;
+            font-weight: 700;
+            margin-bottom: 16px;
+            color: var(--secondary-color);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            letter-spacing: 0.3px;
+        }
+
+        /* 輸入控制美化 */
+        .input-group {
+            display: flex;
+            gap: 12px;
+            margin-bottom: 14px;
+        }
+
+        input[type="text"], select {
+            flex: 1;
+            padding: 10px 16px;
+            background: rgba(15, 23, 42, 0.6);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+            color: #fff;
+            outline: none;
+            font-size: 0.9rem;
+            transition: all 0.25s ease;
+        }
+
+        input[type="text"]:focus, select:focus {
+            border-color: var(--primary-color);
+            box-shadow: 0 0 0 3px rgba(108, 92, 231, 0.25);
+            background: rgba(15, 23, 42, 0.85);
+        }
+
+        button {
+            padding: 10px 20px;
+            background: linear-gradient(135deg, var(--primary-color), var(--primary-hover));
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.25s ease;
+            font-weight: 600;
+            font-size: 0.9rem;
+            box-shadow: 0 4px 12px rgba(108, 92, 231, 0.3);
+        }
+
+        button:hover {
+            opacity: 0.95;
+            transform: translateY(-1px);
+            box-shadow: 0 6px 16px rgba(108, 92, 231, 0.4);
+        }
+
+        button:active {
+            transform: translateY(0);
+        }
+
+        .file-upload-btn {
+            position: relative;
+            display: inline-block;
+            overflow: hidden;
+        }
+
+        .file-upload-btn input[type=file] {
+            position: absolute;
+            left: 0;
+            top: 0;
+            opacity: 0;
+            width: 100%;
+            height: 100%;
+            cursor: pointer;
+        }
+
+        /* EQ 等化器美化 */
+        .eq-container {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 12px;
+            text-align: center;
+            margin-top: 12px;
+            background: rgba(15, 23, 42, 0.4);
+            padding: 16px 10px;
+            border-radius: 12px;
+            border: 1px solid rgba(255, 255, 255, 0.03);
+        }
+
+        .eq-slider {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .eq-slider input[type="range"] {
+            writing-mode: bt-lr;
+            -webkit-appearance: slider-vertical;
+            width: 6px;
+            height: 100px;
+            accent-color: var(--primary-color);
+            cursor: pointer;
+        }
+
+        .eq-slider label {
+            font-size: 0.78rem;
+            color: var(--text-muted);
+            font-weight: 500;
+        }
+
+        /* 側邊欄與列表美化 */
+        .sidebar {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .tabs {
+            display: flex;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+            margin-bottom: 16px;
+            gap: 8px;
+            overflow-x: auto;
+            padding-bottom: 4px;
+        }
+
+        .tab {
+            padding: 8px 12px;
+            cursor: pointer;
+            border-bottom: 2px solid transparent;
+            color: var(--text-muted);
+            font-size: 0.88rem;
+            white-space: nowrap;
+            transition: all 0.25s ease;
+            border-radius: 6px 6px 0 0;
+        }
+
+        .tab:hover {
+            color: var(--text-color);
+            background: rgba(255, 255, 255, 0.03);
+        }
+
+        .tab.active {
+            border-color: var(--primary-color);
+            color: #fff;
+            font-weight: 600;
+            background: rgba(108, 92, 231, 0.1);
+        }
+
+        /* 核心修復：取消高度限制限制，支援無上限滾動 */
+        .list-container {
+            max-height: 420px;
+            overflow-y: auto;
+            padding-right: 4px;
+        }
+
+        .list-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 12px;
+            border-radius: 8px;
+            cursor: pointer;
+            margin-bottom: 6px;
+            background: rgba(255, 255, 255, 0.025);
+            border: 1px solid rgba(255, 255, 255, 0.03);
+            font-size: 0.88rem;
+            transition: all 0.2s ease;
+        }
+
+        .list-item:hover {
+            background: rgba(255, 255, 255, 0.07);
+            border-color: rgba(255, 255, 255, 0.1);
+            transform: translateX(2px);
+        }
+
+        .list-item-title {
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            max-width: 170px;
+            font-weight: 500;
+        }
+
+        .item-actions {
+            display: flex;
+            gap: 4px;
+        }
+
+        .edit-btn, .delete-btn {
+            background: transparent;
+            color: var(--text-muted);
+            padding: 4px 6px;
+            font-size: 0.8rem;
+            box-shadow: none;
+            border-radius: 4px;
+        }
+
+        .edit-btn:hover {
+            color: var(--neon-blue);
+            background: rgba(0, 210, 255, 0.15);
+            box-shadow: none;
+            transform: none;
+        }
+
+        .delete-btn:hover {
+            color: var(--danger-color);
+            background: rgba(255, 118, 117, 0.15);
+            box-shadow: none;
+            transform: none;
+        }
+
+        /* 提示通知美化 */
+        #toast {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            background: linear-gradient(135deg, var(--primary-color), var(--primary-hover));
+            color: white;
+            padding: 12px 24px;
+            border-radius: 10px;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.4);
+            display: none;
+            z-index: 1000;
+            font-size: 0.9rem;
+            font-weight: 500;
+            animation: fadeIn 0.3s ease;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <div class="logo">HoPlayer online Hub</div>
+        <div class="header-right">
+            <div class="status-bar">
+                <div><span class="status-badge" id="netStatusBadge"></span><span id="netStatusText">連線正常</span></div>
+                <div><span id="speedLabel">即時流量</span>: <span id="networkSpeed" style="color:var(--neon-blue); font-weight:600;">0 KB/s</span></div>
+            </div>
+            <select class="lang-select" id="langSelect">
+                <option value="zh-Hant">繁體中文</option>
+                <option value="zh-Hans">简体中文</option>
+                <option value="en">English</option>
+            </select>
+        </div>
+    </header>
+
+    <div class="main-container">
+        <!-- 主播放區域 -->
+        <div class="player-section">
+            <div class="media-container" id="mediaContainer">
+                <div id="visualizerOverlay">
+                    <canvas id="audioVisualizer"></canvas>
+                    <div class="now-playing-title" id="nowPlayingTitle"></div>
+                </div>
+                <video id="mainPlayer" controls playsinline webkit-playsinline x5-playsinline></video>
+                <button class="fullscreen-btn" id="fullScreenBtn">⛶ <span id="fsBtnText">全屏</span></button>
+            </div>
+
+            <!-- 新增播放控制條 (控制鍵/隨機/循環) -->
+            <div class="controls-bar">
+                <button class="ctrl-btn" id="shuffleBtn" title="隨機播放">🔀</button>
+                <button class="ctrl-btn" id="prevBtn" title="上一首">⏮</button>
+                <button class="ctrl-btn" id="playPauseBtn" title="播放/暫停">▶</button>
+                <button class="ctrl-btn" id="nextBtn" title="下一首">⏭</button>
+                <button class="ctrl-btn" id="repeatBtn" title="循環模式">🔁</button>
+            </div>
+
+            <!-- EQ 均衡器 -->
+            <div class="panel">
+                <div class="panel-title">
+                    <span id="eqTitle">均衡器 (EQ 調節)</span>
+                    <button id="resetEq" style="padding: 4px 10px; font-size:0.78rem;">重設</button>
+                </div>
+                <div class="eq-container">
+                    <div class="eq-slider">
+                        <input type="range" id="eq60" min="-12" max="12" value="0">
+                        <label>60Hz</label>
+                    </div>
+                    <div class="eq-slider">
+                        <input type="range" id="eq230" min="-12" max="12" value="0">
+                        <label>230Hz</label>
+                    </div>
+                    <div class="eq-slider">
+                        <input type="range" id="eq910" min="-12" max="12" value="0">
+                        <label>910Hz</label>
+                    </div>
+                    <div class="eq-slider">
+                        <input type="range" id="eq4k" min="-12" max="12" value="0">
+                        <label>4kHz</label>
+                    </div>
+                    <div class="eq-slider">
+                        <input type="range" id="eq14k" min="-12" max="12" value="0">
+                        <label>14kHz</label>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 自訂網址 / 雲端檔案播放 -->
+            <div class="panel">
+                <div class="panel-title" id="streamPanelTitle">網絡串流 / 雲端檔案播放</div>
+                <div class="input-group">
+                    <input type="text" id="streamUrlInput" placeholder="請輸入音訊/影片/電視直鏈 URL (m3u8, mp4, mp3...)">
+                    <button id="playStreamBtn">播放</button>
+                </div>
+                <div class="input-group" style="margin-bottom: 0;">
+                    <input type="text" id="addNameInput" placeholder="頻道/視頻名稱">
+                    <select id="addTypeSelect" style="flex:0.6;">
+                        <option value="radio" id="optRadio">網絡電台</option>
+                        <option value="tv" id="optTv">網絡電視</option>
+                        <option value="video" id="optVideo">免費視頻</option>
+                    </select>
+                    <button id="addChannelBtn" style="background: linear-gradient(135deg, var(--accent-color), #00a884);">新增至列表</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 側邊欄：資源與歷史記錄 -->
+        <div class="sidebar">
+            <!-- 本地檔案選擇 -->
+            <div class="panel">
+                <div class="panel-title" id="localPanelTitle">本地檔案</div>
+                <div class="file-upload-btn" style="width: 100%;">
+                    <button style="width: 100%;" id="localFileBtn">選擇本地音訊 / 影片</button>
+                    <input type="file" id="localFileInput" accept="audio/*,video/*" multiple>
+                </div>
+            </div>
+
+            <!-- 媒體庫 (標籤頁) -->
+            <div class="panel" style="flex:1;">
+                <div class="tabs">
+                    <div class="tab active" data-tab="radio" id="tabRadio">網絡電台</div>
+                    <div class="tab" data-tab="tv" id="tabTv">網絡電視</div>
+                    <div class="tab" data-tab="video" id="tabVideo">免費視頻</div>
+                    <div class="tab" data-tab="history" id="tabHistory">播放記錄</div>
+                </div>
+
+                <!-- 電台列表 -->
+                <div id="tab-radio" class="tab-content">
+                    <div class="list-container" id="radioList"></div>
+                </div>
+
+                <!-- 電視列表 -->
+                <div id="tab-tv" class="tab-content" style="display:none;">
+                    <div class="list-container" id="tvList"></div>
+                </div>
+
+                <!-- 串流視頻列表 -->
+                <div id="tab-video" class="tab-content" style="display:none;">
+                    <div class="list-container" id="videoList"></div>
+                </div>
+
+                <!-- 歷史記錄 -->
+                <div id="tab-history" class="tab-content" style="display:none;">
+                    <div style="display:flex; justify-content:space-between; margin-bottom:10px;">
+                        <span style="font-size:0.8rem; color:var(--text-muted)" id="recentHistoryTitle">最近播放</span>
+                        <a href="#" id="clearHistory" style="font-size:0.8rem; color:var(--danger-color); text-decoration:none;">清空</a>
+                    </div>
+                    <div class="list-container" id="historyList"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="toast">提示訊息</div>
+
+    <script>
+        // --- 語言包 (Dict) ---
+        const i18n = {
+            'zh-Hant': {
+                netOnline: "連線正常",
+                netOffline: "連線中斷",
+                speedLabel: "即時流量",
+                fsBtnText: "全屏",
+                eqTitle: "均衡器 (EQ 調節)",
+                reset: "重設",
+                streamPanelTitle: "網絡串流 / 雲端檔案播放",
+                streamUrlPlaceholder: "請輸入音訊/影片/電視直鏈 URL (m3u8, mp4, mp3...)",
+                play: "播放",
+                addNamePlaceholder: "頻道/視頻名稱",
+                addToList: "新增至列表",
+                optRadio: "網絡電台",
+                optTv: "網絡電視",
+                optVideo: "免費視頻",
+                localPanelTitle: "本地檔案",
+                localFileBtn: "選擇本地音訊 / 影片",
+                tabRadio: "網絡電台",
+                tabTv: "網絡電視",
+                tabVideo: "免費視頻",
+                tabHistory: "播放記錄",
+                recentHistoryTitle: "最近播放",
+                clear: "清空",
+                edit: "編輯",
+                delete: "刪除",
+                toastEqReset: "EQ 已重置",
+                toastPlaying: "正在播放: ",
+                toastPlayFail: "播放失敗，請檢查鏈接有效性",
+                toastNetOff: "網絡連線已中斷！",
+                toastItemDeleted: "已刪除該項目",
+                toastItemUpdated: "已成功修改項目",
+                toastHistoryCleared: "歷史記錄已清空",
+                toastAddSuccess: "成功新增至列表！",
+                toastFillInputs: "請填寫 URL 與名稱",
+                toastInvalidUrl: "請輸入有效的 URL",
+                shuffleOn: "隨機播放：開啟",
+                shuffleOff: "隨機播放：關閉",
+                repeatOff: "循環模式：關閉",
+                repeatAll: "循環模式：列表循環",
+                repeatOne: "循環模式：單曲循環"
+            },
+            'zh-Hans': {
+                netOnline: "网络正常",
+                netOffline: "网络中断",
+                speedLabel: "实时流量",
+                fsBtnText: "全屏",
+                eqTitle: "均衡器 (EQ 调节)",
+                reset: "重置",
+                streamPanelTitle: "网络串流 / 云端文件播放",
+                streamUrlPlaceholder: "请输入音频/视频/电视直链 URL (m3u8, mp4, mp3...)",
+                play: "播放",
+                addNamePlaceholder: "频道/视频名称",
+                addToList: "添加至列表",
+                optRadio: "网络电台",
+                optTv: "网络电视",
+                optVideo: "免费视频",
+                localPanelTitle: "本地文件",
+                localFileBtn: "选择本地音频 / 视频",
+                tabRadio: "网络电台",
+                tabTv: "网络电视",
+                tabVideo: "免费视频",
+                tabHistory: "播放记录",
+                recentHistoryTitle: "最近播放",
+                clear: "清空",
+                edit: "编辑",
+                delete: "删除",
+                toastEqReset: "EQ 已重置",
+                toastPlaying: "正在播放: ",
+                toastPlayFail: "播放失败，请检查链接有效性",
+                toastNetOff: "网络连接已中断！",
+                toastItemDeleted: "已删除该项目",
+                toastItemUpdated: "已成功修改项目",
+                toastHistoryCleared: "播放记录已清空",
+                toastAddSuccess: "成功添加至列表！",
+                toastFillInputs: "请填写 URL 与名称",
+                toastInvalidUrl: "请输入有效的 URL",
+                shuffleOn: "随机播放：开启",
+                shuffleOff: "随机播放：关闭",
+                repeatOff: "循环模式：关闭",
+                repeatAll: "循环模式：列表循环",
+                repeatOne: "循环模式：单曲循环"
+            },
+            'en': {
+                netOnline: "Online",
+                netOffline: "Offline",
+                speedLabel: "Speed",
+                fsBtnText: "Fullscreen",
+                eqTitle: "Equalizer (EQ)",
+                reset: "Reset",
+                streamPanelTitle: "Network Stream / Cloud File",
+                streamUrlPlaceholder: "Enter Audio/Video/TV Stream URL (m3u8, mp4, mp3...)",
+                play: "Play",
+                addNamePlaceholder: "Channel/Video Title",
+                addToList: "Add to List",
+                optRadio: "Radio",
+                optTv: "Live TV",
+                optVideo: "Free Videos",
+                localPanelTitle: "Local File",
+                localFileBtn: "Select Local Audio / Video",
+                tabRadio: "Radio",
+                tabTv: "Live TV",
+                tabVideo: "Videos",
+                tabHistory: "History",
+                recentHistoryTitle: "Recent History",
+                clear: "Clear",
+                edit: "Edit",
+                delete: "Delete",
+                toastEqReset: "EQ Reset",
+                toastPlaying: "Now Playing: ",
+                toastPlayFail: "Playback failed, check URL",
+                toastNetOff: "Network disconnected!",
+                toastItemDeleted: "Item deleted",
+                toastItemUpdated: "Item updated",
+                toastHistoryCleared: "History cleared",
+                toastAddSuccess: "Added to list!",
+                toastFillInputs: "Please enter URL and Name",
+                toastInvalidUrl: "Please enter a valid URL",
+                shuffleOn: "Shuffle: ON",
+                shuffleOff: "Shuffle: OFF",
+                repeatOff: "Repeat: OFF",
+                repeatAll: "Repeat: ALL",
+                repeatOne: "Repeat: ONE"
+            }
+        };
+
+        let currentLang = localStorage.getItem('ho_lang') || 'zh-Hant';
+
+        function updateLanguage(lang) {
+            currentLang = lang;
+            localStorage.setItem('ho_lang', lang);
+            const dict = i18n[lang];
+
+            document.getElementById('netStatusText').innerText = navigator.onLine ? dict.netOnline : dict.netOffline;
+            document.getElementById('speedLabel').innerText = dict.speedLabel;
+            document.getElementById('fsBtnText').innerText = dict.fsBtnText;
+            document.getElementById('eqTitle').innerText = dict.eqTitle;
+            document.getElementById('resetEq').innerText = dict.reset;
+            document.getElementById('streamPanelTitle').innerText = dict.streamPanelTitle;
+            document.getElementById('streamUrlInput').placeholder = dict.streamUrlPlaceholder;
+            document.getElementById('playStreamBtn').innerText = dict.play;
+            document.getElementById('addNameInput').placeholder = dict.addNamePlaceholder;
+            document.getElementById('addChannelBtn').innerText = dict.addToList;
+            document.getElementById('optRadio').innerText = dict.optRadio;
+            document.getElementById('optTv').innerText = dict.optTv;
+            document.getElementById('optVideo').innerText = dict.optVideo;
+            document.getElementById('localPanelTitle').innerText = dict.localPanelTitle;
+            document.getElementById('localFileBtn').innerText = dict.localFileBtn;
+            document.getElementById('tabRadio').innerText = dict.tabRadio;
+            document.getElementById('tabTv').innerText = dict.tabTv;
+            document.getElementById('tabVideo').innerText = dict.tabVideo;
+            document.getElementById('tabHistory').innerText = dict.tabHistory;
+            document.getElementById('recentHistoryTitle').innerText = dict.recentHistoryTitle;
+            document.getElementById('clearHistory').innerText = dict.clear;
+
+            renderRadios();
+            renderTVs();
+            renderVideos();
+        }
+
+        document.getElementById('langSelect').value = currentLang;
+        document.getElementById('langSelect').addEventListener('change', (e) => {
+            updateLanguage(e.target.value);
+        });
+
+        // --- 預設資料 ---
+        const defaultRadios = [
+            { name: "香港電台 第一台 (RTHK 1)", url: "https://rthk.akamaized.net/hls/live/2032532/radio1/master.m3u8" },
+            { name: "香港電台 第二台 (RTHK 2)", url: "https://rthk.akamaized.net/hls/live/2032533/radio2/master.m3u8" },
+            { name: "飛碟電台 FM92.1", url: "https://stream.rcs.revma.com/39q278yq24uvv" },
+            { name: "Hit FM 聯播網", url: "https://stream.hitoradio.com/hitfm.mp3" },
+            { name: "Classic FM (古典音樂)", url: "https://media-ice.musicradio.com/ClassicFMMP3" }
+        ];
+
+        const defaultTVs = [
+            { name: "NASA TV 航天直播", url: "https://ntv1.akamaized.net/hls/live/2014075/NASA-NTV1-HLS/master.m3u8" },
+            { name: "Bloomberg TV 財經新聞", url: "https://liveproduced-livehk-cdn.akamaized.net/G1/live.m3u8" },
+            { name: "EuroNews 歐洲新聞台", url: "https://euronews-euronews-world-1-us.samsung.wurl.tv/manifest/playlist.m3u8" }
+        ];
+
+        const defaultVideos = [
+            { name: "Big Buck Bunny (4K 測試影片)", url: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4" },
+            { name: "Elephants Dream (動畫短片)", url: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4" },
+            { name: "Tears of Steel (經典測試影片)", url: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4" }
+        ];
+
+        // --- 狀態管理 ---
+        let radioList = JSON.parse(localStorage.getItem('ho_radios')) || defaultRadios;
+        let tvList = JSON.parse(localStorage.getItem('ho_tvs')) || defaultTVs;
+        let videoList = JSON.parse(localStorage.getItem('ho_videos')) || defaultVideos;
+        let historyList = JSON.parse(localStorage.getItem('ho_history')) || [];
+        let hlsPlayer = null;
+
+        // 播放控制狀態
+        let currentTab = 'radio';
+        let currentIndex = -1;
+        let isShuffle = false;
+        let repeatMode = 0; // 0: 關閉, 1: 全列表循環, 2: 單曲循環
+
+        // --- DOM 元素 ---
+        const player = document.getElementById('mainPlayer');
+        const mediaContainer = document.getElementById('mediaContainer');
+        const visualizerOverlay = document.getElementById('visualizerOverlay');
+        const visualizer = document.getElementById('audioVisualizer');
+        const nowPlayingTitle = document.getElementById('nowPlayingTitle');
+        const canvasCtx = visualizer.getContext('2d');
+        const toast = document.getElementById('toast');
+
+        // 控制按鈕 DOM
+        const playPauseBtn = document.getElementById('playPauseBtn');
+        const prevBtn = document.getElementById('prevBtn');
+        const nextBtn = document.getElementById('nextBtn');
+        const shuffleBtn = document.getElementById('shuffleBtn');
+        const repeatBtn = document.getElementById('repeatBtn');
+
+        // --- 全屏功能 ---
+        document.getElementById('fullScreenBtn').addEventListener('click', toggleFullScreen);
+
+        function toggleFullScreen() {
+            if (!document.fullscreenElement) {
+                if (mediaContainer.requestFullscreen) {
+                    mediaContainer.requestFullscreen();
+                } else if (mediaContainer.webkitRequestFullscreen) {
+                    mediaContainer.webkitRequestFullscreen();
+                } else if (mediaContainer.msRequestFullscreen) {
+                    mediaContainer.msRequestFullscreen();
+                }
+            } else {
+                if (document.exitFullscreen) {
+                    document.exitFullscreen();
+                }
+            }
+        }
+
+        // --- Web Audio API & EQ ---
+        let audioCtx, source, analyser;
+        let eqNodes = [];
+        const eqFrequencies = [60, 230, 910, 4000, 14000];
+        let isAudioConnected = false;
+
+        function initAudioContext() {
+            if (isAudioConnected) return;
+            try {
+                const AudioContext = window.AudioContext || window.webkitAudioContext;
+                audioCtx = new AudioContext();
+                
+                analyser = audioCtx.createAnalyser();
+                analyser.fftSize = 128;
+
+                source = audioCtx.createMediaElementSource(player);
+
+                let prevNode = source;
+                eqFrequencies.forEach((freq, index) => {
+                    const filter = audioCtx.createBiquadFilter();
+                    filter.type = index === 0 ? 'lowshelf' : (index === eqFrequencies.length - 1 ? 'highshelf' : 'peaking');
+                    filter.frequency.value = freq;
+                    filter.gain.value = 0;
+                    
+                    prevNode.connect(filter);
+                    prevNode = filter;
+                    eqNodes.push(filter);
+                });
+
+                prevNode.connect(analyser);
+                analyser.connect(audioCtx.destination);
+                isAudioConnected = true;
+
+                drawLinearDotVisualizer();
+            } catch(e) {
+                console.log("Audio Context initialized:", e);
+            }
+        }
+
+        // EQ 綁定
+        const eqInputs = [
+            document.getElementById('eq60'),
+            document.getElementById('eq230'),
+            document.getElementById('eq910'),
+            document.getElementById('eq4k'),
+            document.getElementById('eq14k')
+        ];
+
+        eqInputs.forEach((input, idx) => {
+            input.addEventListener('input', (e) => {
+                if (eqNodes[idx]) {
+                    eqNodes[idx].gain.value = parseFloat(e.target.value);
+                }
+            });
+        });
+
+        document.getElementById('resetEq').addEventListener('click', () => {
+            eqInputs.forEach((input, idx) => {
+                input.value = 0;
+                if (eqNodes[idx]) eqNodes[idx].gain.value = 0;
+            });
+            showToast(i18n[currentLang].toastEqReset);
+        });
+
+        // --- 天空藍多點橫直線（正中向兩邊擴散，小一半居中）---
+        function drawLinearDotVisualizer() {
+            requestAnimationFrame(drawLinearDotVisualizer);
+            if (!analyser || visualizerOverlay.style.display === 'none') return;
+
+            const bufferLength = analyser.frequencyBinCount;
+            const dataArray = new Uint8Array(bufferLength);
+            analyser.getByteFrequencyData(dataArray);
+
+            visualizer.width = visualizer.clientWidth;
+            visualizer.height = visualizer.clientHeight;
+
+            canvasCtx.clearRect(0, 0, visualizer.width, visualizer.height);
+
+            // 計算低音與高音動態質感
+            let bassSum = 0;
+            for (let i = 0; i < 10; i++) bassSum += dataArray[i];
+            let bassAvg = bassSum / 10;
+
+            let trebleSum = 0;
+            for (let i = 40; i < 60; i++) trebleSum += dataArray[i];
+            let trebleAvg = trebleSum / 20;
+
+            const darkRatio = Math.min(1, bassAvg / 220);
+            const lightRatio = Math.min(1, trebleAvg / 180);
+
+            // 天空藍基調 (#00d2ff)
+            const r = Math.round(0 + lightRatio * 160);
+            const g = Math.round(180 + lightRatio * 60 - darkRatio * 30);
+            const b = 255;
+            const alpha = 0.75 + lightRatio * 0.25;
+
+            const numPoints = 36; // 點數數量
+            const centerY = visualizer.height / 2;
+            const centerX = visualizer.width / 2;
+            const halfPoints = Math.floor(numPoints / 2);
+            const spacingX = (visualizer.width / 2) / (halfPoints + 1);
+
+            // 正正中間繪製中心點
+            const centerValue = dataArray[0] || 0;
+            const centerHalfH = Math.max(3, (centerValue / 255) * (visualizer.height * 0.45));
+            const dotWidth = Math.max(3, spacingX * 0.45);
+
+            canvasCtx.fillStyle = `rgba(${r}, ${g}, ${b}, ${alpha})`;
+            canvasCtx.shadowBlur = 10;
+            canvasCtx.shadowColor = `rgba(0, 210, 255, ${0.5 + lightRatio * 0.5})`;
+
+            canvasCtx.beginPath();
+            canvasCtx.roundRect(centerX - dotWidth / 2, centerY - centerHalfH, dotWidth, centerHalfH * 2, dotWidth / 2);
+            canvasCtx.fill();
+
+            // 由正中向左右兩邊擴散繪製
+            for (let i = 1; i <= halfPoints; i++) {
+                const dataIdx = Math.floor((i / halfPoints) * (bufferLength / 1.5));
+                const value = dataArray[dataIdx] || 0;
+                const halfHeight = Math.max(3, (value / 255) * (visualizer.height * 0.45));
+
+                // 右側點
+                const rx = centerX + i * spacingX;
+                canvasCtx.beginPath();
+                canvasCtx.roundRect(rx - dotWidth / 2, centerY - halfHeight, dotWidth, halfHeight * 2, dotWidth / 2);
+                canvasCtx.fill();
+
+                // 左側點
+                const lx = centerX - i * spacingX;
+                canvasCtx.beginPath();
+                canvasCtx.roundRect(lx - dotWidth / 2, centerY - halfHeight, dotWidth, halfHeight * 2, dotWidth / 2);
+                canvasCtx.fill();
+            }
+        }
+
+        // --- 播放媒體與手機息屏播放 (Media Session) ---
+        function playMedia(url, title = "網絡媒體", isAudioOnly = false, tabType = null, index = -1) {
+            if (tabType) currentTab = tabType;
+            if (index !== -1) currentIndex = index;
+
+            // 更新屏下顯示的音訊名稱
+            nowPlayingTitle.innerText = "🎵 " + title;
+
+            // 先重置 HLS 播放器
+            if (hlsPlayer) {
+                hlsPlayer.destroy();
+                hlsPlayer = null;
+            }
+
+            // 清理舊的 src 避免殘留
+            player.removeAttribute('src');
+            player.load();
+
+            // HLS (.m3u8) 串流處理
+            if (url.includes('.m3u8') && Hls.isSupported()) {
+                hlsPlayer = new Hls({
+                    enableWorker: true,
+                    lowLatencyMode: false,
+                    backBufferLength: 90
+                });
+                hlsPlayer.loadSource(url);
+                hlsPlayer.attachMedia(player);
+                hlsPlayer.on(Hls.Events.MANIFEST_PARSED, () => {
+                    // manifest 解析完成，此時可以播放
+                });
+            } else {
+                player.src = url;
+            }
+
+            // 初始化 AudioContext (EQ 需要，視頻也需要才能使用 EQ)
+            initAudioContext();
+            if (audioCtx && audioCtx.state === 'suspended') {
+                audioCtx.resume();
+            }
+
+            player.play().then(() => {
+                playPauseBtn.innerText = "⏸";
+                showToast(i18n[currentLang].toastPlaying + title);
+                addHistory(title, url);
+                // 播放成功後再判斷是否顯示可視化
+                updateVisualizerVisibility();
+            }).catch(err => {
+                playPauseBtn.innerText = "▶";
+                showToast(i18n[currentLang].toastPlayFail);
+            });
+
+            // 手機息屏播放支援 (Media Session API)
+            if ('mediaSession' in navigator) {
+                navigator.mediaSession.metadata = new MediaMetadata({
+                    title: title,
+                    artist: "HoPlayer online Hub",
+                    album: "Live Hub"
+                });
+
+                navigator.mediaSession.setActionHandler('play', () => { player.play(); playPauseBtn.innerText = "⏸"; });
+                navigator.mediaSession.setActionHandler('pause', () => { player.pause(); playPauseBtn.innerText = "▶"; });
+                navigator.mediaSession.setActionHandler('previoustrack', playPrev);
+                navigator.mediaSession.setActionHandler('nexttrack', playNext);
+            }
+        }
+
+        let visualizerCheckTimer = null;
+        function updateVisualizerVisibility() {
+            if (visualizerCheckTimer) {
+                clearTimeout(visualizerCheckTimer);
+            }
+            // 立即檢查一次
+            checkAndSetVisualizer();
+            // 延遲再檢查幾次，因為 HLS 的 videoWidth 可能較晚才會有值
+            visualizerCheckTimer = setTimeout(() => {
+                checkAndSetVisualizer();
+                setTimeout(() => {
+                    checkAndSetVisualizer();
+                }, 800);
+            }, 400);
+        }
+
+        function checkAndSetVisualizer() {
+            // 如果視頻有寬高（表示有畫面），則隱藏可視化；否則顯示
+            if (player.videoWidth > 0 && player.videoHeight > 0) {
+                visualizerOverlay.style.display = 'none';
+            } else {
+                // 沒有畫面時才顯示可視化（例如純音頻）
+                visualizerOverlay.style.display = 'block';
+            }
+        }
+
+        // 播放控制鍵邏輯
+        playPauseBtn.addEventListener('click', () => {
+            if (player.paused) {
+                player.play();
+                playPauseBtn.innerText = "⏸";
+            } else {
+                player.pause();
+                playPauseBtn.innerText = "▶";
+            }
+        });
+
+        player.addEventListener('play', () => {
+            playPauseBtn.innerText = "⏸";
+            updateVisualizerVisibility();
+        });
+        player.addEventListener('pause', () => playPauseBtn.innerText = "▶");
+
+        // 當視頻元數據加載完成時，重新判斷可視化
+        player.addEventListener('loadedmetadata', () => {
+            checkAndSetVisualizer();
+        });
+        // 當視頻尺寸變化時（例如解析度切換），也重新判斷
+        player.addEventListener('resize', () => {
+            checkAndSetVisualizer();
+        });
+
+        // 獲取當前活頁簿的列表數據
+        function getCurrentList() {
+            if (currentTab === 'radio') return radioList;
+            if (currentTab === 'tv') return tvList;
+            if (currentTab === 'video') return videoList;
+            return [];
+        }
+
+        // 上一首
+        function playPrev() {
+            const list = getCurrentList();
+            if (list.length === 0) return;
+
+            if (isShuffle) {
+                currentIndex = Math.floor(Math.random() * list.length);
+            } else {
+                currentIndex = (currentIndex - 1 + list.length) % list.length;
+            }
+            const item = list[currentIndex];
+            playMedia(item.url, item.name, currentTab === 'radio', currentTab, currentIndex);
+        }
+
+        // 下一首
+        function playNext() {
+            const list = getCurrentList();
+            if (list.length === 0) return;
+
+            if (isShuffle) {
+                currentIndex = Math.floor(Math.random() * list.length);
+            } else {
+                currentIndex = (currentIndex + 1) % list.length;
+            }
+            const item = list[currentIndex];
+            playMedia(item.url, item.name, currentTab === 'radio', currentTab, currentIndex);
+        }
+
+        prevBtn.addEventListener('click', playPrev);
+        nextBtn.addEventListener('click', playNext);
+
+        // 隨機播放開關
+        shuffleBtn.addEventListener('click', () => {
+            isShuffle = !isShuffle;
+            if (isShuffle) {
+                shuffleBtn.classList.add('active');
+                showToast(i18n[currentLang].shuffleOn);
+            } else {
+                shuffleBtn.classList.remove('active');
+                showToast(i18n[currentLang].shuffleOff);
+            }
+        });
+
+        // 循環播放切換 (關閉 -> 列表循環 -> 單曲循環)
+        repeatBtn.addEventListener('click', () => {
+            repeatMode = (repeatMode + 1) % 3;
+            if (repeatMode === 0) {
+                repeatBtn.classList.remove('active');
+                repeatBtn.innerText = "🔁";
+                showToast(i18n[currentLang].repeatOff);
+            } else if (repeatMode === 1) {
+                repeatBtn.classList.add('active');
+                repeatBtn.innerText = "🔁";
+                showToast(i18n[currentLang].repeatAll);
+            } else if (repeatMode === 2) {
+                repeatBtn.classList.add('active');
+                repeatBtn.innerText = "🔂";
+                showToast(i18n[currentLang].repeatOne);
+            }
+        });
+
+        // 當播放結束時自動處理循環與下一首
+        player.addEventListener('ended', () => {
+            if (repeatMode === 2) { // 單曲循環
+                player.play();
+            } else if (repeatMode === 1 || isShuffle) { // 全列表循環或隨機
+                playNext();
+            }
+        });
+
+        // --- 網絡狀態與流量監控 ---
+        window.addEventListener('online', updateNetworkStatus);
+        window.addEventListener('offline', updateNetworkStatus);
+
+        function updateNetworkStatus() {
+            const badge = document.getElementById('netStatusBadge');
+            const text = document.getElementById('netStatusText');
+            if (navigator.onLine) {
+                badge.style.backgroundColor = 'var(--accent-color)';
+                text.innerText = i18n[currentLang].netOnline;
+            } else {
+                badge.style.backgroundColor = 'var(--danger-color)';
+                text.innerText = i18n[currentLang].netOffline;
+                showToast(i18n[currentLang].toastNetOff);
+            }
+        }
+
+        // 估算流量 (KB/s)
+        let lastLoadedBytes = 0;
+        setInterval(() => {
+            if (!player.paused) {
+                const perfEntries = performance.getEntriesByType("resource");
+                let totalBytes = 0;
+                perfEntries.forEach(entry => {
+                    if (entry.transferSize) totalBytes += entry.transferSize;
+                });
+                
+                let speed = (totalBytes - lastLoadedBytes) / 1024;
+                if (speed < 0) speed = 0;
+                document.getElementById('networkSpeed').innerText = speed > 1024 
+                    ? (speed / 1024).toFixed(2) + " MB/s" 
+                    : speed.toFixed(1) + " KB/s";
+                
+                lastLoadedBytes = totalBytes;
+            } else {
+                document.getElementById('networkSpeed').innerText = "0 KB/s";
+            }
+        }, 1000);
+
+        // --- UI 渲染與列表操作 ---
+        function renderRadios() {
+            const container = document.getElementById('radioList');
+            container.innerHTML = '';
+            radioList.forEach((item, index) => {
+                const div = document.createElement('div');
+                div.className = 'list-item';
+                div.innerHTML = `
+                    <span class="list-item-title" onclick="playMedia('${item.url}', '${item.name}', true, 'radio', ${index})">📻 ${item.name}</span>
+                    <div class="item-actions">
+                        <button class="edit-btn" onclick="editItem('radio', ${index})">${i18n[currentLang].edit}</button>
+                        <button class="delete-btn" onclick="deleteItem('radio', ${index})">${i18n[currentLang].delete}</button>
+                    </div>
+                `;
+                container.appendChild(div);
+            });
+            localStorage.setItem('ho_radios', JSON.stringify(radioList));
+        }
+
+        function renderTVs() {
+            const container = document.getElementById('tvList');
+            container.innerHTML = '';
+            tvList.forEach((item, index) => {
+                const div = document.createElement('div');
+                div.className = 'list-item';
+                div.innerHTML = `
+                    <span class="list-item-title" onclick="playMedia('${item.url}', '${item.name}', false, 'tv', ${index})">📺 ${item.name}</span>
+                    <div class="item-actions">
+                        <button class="edit-btn" onclick="editItem('tv', ${index})">${i18n[currentLang].edit}</button>
+                        <button class="delete-btn" onclick="deleteItem('tv', ${index})">${i18n[currentLang].delete}</button>
+                    </div>
+                `;
+                container.appendChild(div);
+            });
+            localStorage.setItem('ho_tvs', JSON.stringify(tvList));
+        }
+
+        function renderVideos() {
+            const container = document.getElementById('videoList');
+            container.innerHTML = '';
+            videoList.forEach((item, index) => {
+                const div = document.createElement('div');
+                div.className = 'list-item';
+                div.innerHTML = `
+                    <span class="list-item-title" onclick="playMedia('${item.url}', '${item.name}', false, 'video', ${index})">🎬 ${item.name}</span>
+                    <div class="item-actions">
+                        <button class="edit-btn" onclick="editItem('video', ${index})">${i18n[currentLang].edit}</button>
+                        <button class="delete-btn" onclick="deleteItem('video', ${index})">${i18n[currentLang].delete}</button>
+                    </div>
+                `;
+                container.appendChild(div);
+            });
+            localStorage.setItem('ho_videos', JSON.stringify(videoList));
+        }
+
+        function renderHistory() {
+            const container = document.getElementById('historyList');
+            container.innerHTML = '';
+            historyList.forEach((item) => {
+                const div = document.createElement('div');
+                div.className = 'list-item';
+                div.innerHTML = `
+                    <span class="list-item-title" onclick="playMedia('${item.url}', '${item.name}', false)">🕒 ${item.name}</span>
+                `;
+                container.appendChild(div);
+            });
+            localStorage.setItem('ho_history', JSON.stringify(historyList));
+        }
+
+        // 新增編輯功能
+        function editItem(type, index) {
+            let list = type === 'radio' ? radioList : (type === 'tv' ? tvList : videoList);
+            let item = list[index];
+            
+            let newName = prompt("請輸入新名稱：", item.name);
+            if (newName === null) return; // 使用者取消
+            newName = newName.trim();
+
+            let newUrl = prompt("請輸入新 URL：", item.url);
+            if (newUrl === null) return; // 使用者取消
+            newUrl = newUrl.trim();
+
+            if (newName && newUrl) {
+                list[index] = { name: newName, url: newUrl };
+                if (type === 'radio') renderRadios();
+                else if (type === 'tv') renderTVs();
+                else if (type === 'video') renderVideos();
+                showToast(i18n[currentLang].toastItemUpdated);
+            } else {
+                showToast(i18n[currentLang].toastFillInputs);
+            }
+        }
+
+        function deleteItem(type, index) {
+            if (type === 'radio') {
+                radioList.splice(index, 1);
+                renderRadios();
+            } else if (type === 'tv') {
+                tvList.splice(index, 1);
+                renderTVs();
+            } else if (type === 'video') {
+                videoList.splice(index, 1);
+                renderVideos();
+            }
+            showToast(i18n[currentLang].toastItemDeleted);
+        }
+
+        function addHistory(name, url) {
+            historyList = historyList.filter(h => h.url !== url);
+            historyList.unshift({ name, url });
+            if (historyList.length > 20) historyList.pop();
+            renderHistory();
+        }
+
+        // --- 事件綁定 ---
+        // 1. 指定 URL 播放
+        document.getElementById('playStreamBtn').addEventListener('click', () => {
+            const url = document.getElementById('streamUrlInput').value.trim();
+            if (url) {
+                playMedia(url, "自訂網絡串流", false);
+            } else {
+                showToast(i18n[currentLang].toastInvalidUrl);
+            }
+        });
+
+        // 2. 新增頻道/視頻至對應列表
+        document.getElementById('addChannelBtn').addEventListener('click', () => {
+            const url = document.getElementById('streamUrlInput').value.trim();
+            const name = document.getElementById('addNameInput').value.trim();
+            const type = document.getElementById('addTypeSelect').value;
+
+            if (url && name) {
+                if (type === 'radio') {
+                    radioList.push({ name, url });
+                    renderRadios();
+                } else if (type === 'tv') {
+                    tvList.push({ name, url });
+                    renderTVs();
+                } else if (type === 'video') {
+                    videoList.push({ name, url });
+                    renderVideos();
+                }
+                document.getElementById('addNameInput').value = '';
+                showToast(i18n[currentLang].toastAddSuccess);
+            } else {
+                showToast(i18n[currentLang].toastFillInputs);
+            }
+        });
+
+        // 3. 本地檔案播放
+        document.getElementById('localFileInput').addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                const fileURL = URL.createObjectURL(file);
+                playMedia(fileURL, file.name, file.type.startsWith('audio'));
+            }
+        });
+
+        // 4. 清空歷史記錄
+        document.getElementById('clearHistory').addEventListener('click', (e) => {
+            e.preventDefault();
+            historyList = [];
+            renderHistory();
+            showToast(i18n[currentLang].toastHistoryCleared);
+        });
+
+        // 5. Tab 切換邏輯
+        document.querySelectorAll('.tab').forEach(tab => {
+            tab.addEventListener('click', () => {
+                document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+                document.querySelectorAll('.tab-content').forEach(c => c.style.display = 'none');
+                
+                tab.classList.add('active');
+                currentTab = tab.dataset.tab;
+                document.getElementById(`tab-${tab.dataset.tab}`).style.display = 'block';
+            });
+        });
+
+        // Toast 提示框
+        function showToast(msg) {
+            toast.innerText = msg;
+            toast.style.display = 'block';
+            setTimeout(() => {
+                toast.style.display = 'none';
+            }, 3000);
+        }
+
+        // 頁面卸載時清理 HLS
+        window.addEventListener('beforeunload', () => {
+            if (hlsPlayer) {
+                hlsPlayer.destroy();
+            }
+        });
+
+        // --- 初始化 ---
+        updateLanguage(currentLang);
+        renderHistory();
+        updateNetworkStatus();
+    </script>
+</body>
+</html>
